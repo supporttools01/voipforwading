@@ -1,0 +1,17 @@
+services:
+  asterisk:
+    image: andrius/asterisk:20-current
+    container_name: nxvoice-asterisk
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./logs:/var/log/asterisk
+    environment:
+      - TZ=UTC
+
+# Before starting:
+# 1. Render asterisk/pjsip.conf from pjsip.conf.template using the server-only secrets.
+# 2. Open SIP/RTP only as required by the provider and firewall policy.
+# 3. Do not publish provider credentials in this repository.
