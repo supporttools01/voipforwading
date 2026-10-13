@@ -96,10 +96,15 @@ async function setupAdminProvisioning(){
     try{
       const {data:sessionData,error:sessionError}=await supabase.auth.getSession();if(sessionError)throw sessionError;
       const accessToken=sessionData?.session?.access_token;if(!accessToken)throw new Error('Admin session expired. Please sign in again.');
-      const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${accessToken}`},body:{full_name:fullName,username,email,password,initial_minutes:initialMinutes,max_concurrent_calls:maxCC}});
+      const {data:duplicate,error:duplicateError}=await supabase.from('profiles').select('id').ilike('username',username).maybeSingle();
+      if(duplicateError)throw new Error('Could not validate User ID. Please try again.');
+      if(duplicate)throw new Error('That User ID is already in use. Choose another.');
+      const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${accessToken}`},body:{full_name:fullName,email,password,initial_minutes:initialMinutes,max_concurrent_calls:maxCC}});
       if(error){let detail='';try{if(error.context&&typeof error.context.json==='function'){const p=await error.context.json();detail=p?.error||p?.message||''}}catch{}throw new Error(detail||error.message||'Edge Function request failed.');}
       if(!data?.success)throw new Error(data?.error||'Customer account could not be created.');
-      msg.textContent=`Customer created: User ID ${data.user.username} · ${data.user.initial_minutes} minutes · Max CC ${data.user.max_concurrent_calls}`;msg.style.color='#067647';
+      const {data:usernameData,error:usernameError}=await supabase.functions.invoke('admin-set-username',{headers:{Authorization:`Bearer ${accessToken}`},body:{user_id:data.user.id,username}});
+      if(usernameError||!usernameData?.success)throw new Error(usernameData?.error||'Account created, but User ID could not be saved. Contact support before sharing the credentials.');
+      msg.textContent=`Customer created: User ID ${username} · ${data.user.initial_minutes} minutes · Max CC ${data.user.max_concurrent_calls}`;msg.style.color='#067647';
       emailInput.value='';document.getElementById('newUsername').value='';document.getElementById('newPassword').value='';document.getElementById('newFullName').value='';
       if(window.nxReloadAdmin)await window.nxReloadAdmin();
     }catch(error){msg.textContent=error?.message||'Customer creation failed.';msg.style.color='#b42318';}
