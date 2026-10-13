@@ -96,7 +96,7 @@ async function setupAdminProvisioning(){
     try{
       const {data:sessionData,error:sessionError}=await supabase.auth.getSession();if(sessionError)throw sessionError;
       const accessToken=sessionData?.session?.access_token;if(!accessToken)throw new Error('Admin session expired. Please sign in again.');
-      const {data:duplicate,error:duplicateError}=await supabase.from('profiles').select('id').ilike('username',username).maybeSingle();
+      const {data:duplicate,error:duplicateError}=await supabase.from('profiles').select('id').eq('username',username).maybeSingle();
       if(duplicateError)throw new Error('Could not validate User ID. Please try again.');
       if(duplicate)throw new Error('That User ID is already in use. Choose another.');
       const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${accessToken}`},body:{full_name:fullName,email,password,initial_minutes:initialMinutes,max_concurrent_calls:maxCC}});
