@@ -1,8 +1,13 @@
 import { supabase, isSupabaseConfigured } from './supabase-client.js';
 
-export async function signIn(email,password){
+export async function signIn(username,password){
   if(!isSupabaseConfigured())throw new Error('Supabase publishable key is not configured yet.');
-  return supabase.auth.signInWithPassword({email,password});
+  const {data,error}=await supabase.functions.invoke('username-login',{body:{username:String(username||'').trim().toLowerCase(),password}});
+  if(error)throw new Error('Invalid User ID or password.');
+  if(!data?.session)throw new Error(data?.error||'Invalid User ID or password.');
+  const {data:sessionData,error:sessionError}=await supabase.auth.setSession({access_token:data.session.access_token,refresh_token:data.session.refresh_token});
+  if(sessionError)throw sessionError;
+  return {data:{user:sessionData.user},error:null};
 }
 
 export async function signOut(){
@@ -74,21 +79,28 @@ async function setupAdminProvisioning(){
       emailField.parentElement.insertBefore(field,emailField);
     }
   }
+  if(!document.getElementById('newUsername')){
+    const usernameField=document.createElement('div');usernameField.className='field span2';
+    usernameField.innerHTML='<label>Unique User ID</label><input id="newUsername" type="text" autocomplete="off" maxlength="40" placeholder="e.g. client_1001" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,39}" required>';
+    emailInput.closest('.field')?.parentElement?.insertBefore(usernameField,emailInput.closest('.field'));
+  }
+  const emailLabel=emailInput.closest('.field')?.querySelector('label');if(emailLabel)emailLabel.textContent='Contact / Recovery Email';
   button.addEventListener('click',async event=>{
     event.preventDefault();event.stopImmediatePropagation();
     const fullName=document.getElementById('newFullName')?.value.trim()||'';
+    const username=document.getElementById('newUsername')?.value.trim().toLowerCase()||'';
     const email=emailInput.value.trim(),password=document.getElementById('newPassword')?.value||'';
     const initialMinutes=Number(document.getElementById('newMinutes')?.value||0),maxCC=Number(document.getElementById('newCc')?.value||2);
-    if(!fullName||!email||password.length<8){msg.textContent='Enter customer/company name, valid email and a password of at least 8 characters.';msg.style.color='#b42318';return;}
+    if(!fullName||!email||!/^[a-z0-9][a-z0-9._-]{2,39}$/.test(username)||password.length<8){msg.textContent='Enter name, a unique User ID (3–40 letters/numbers/._-), valid contact email and password (8+ characters).';msg.style.color='#b42318';return;}
     button.disabled=true;button.textContent='Creating…';msg.textContent='Creating secure customer account…';msg.style.color='#667085';
     try{
       const {data:sessionData,error:sessionError}=await supabase.auth.getSession();if(sessionError)throw sessionError;
       const accessToken=sessionData?.session?.access_token;if(!accessToken)throw new Error('Admin session expired. Please sign in again.');
-      const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${accessToken}`},body:{full_name:fullName,email,password,initial_minutes:initialMinutes,max_concurrent_calls:maxCC}});
+      const {data,error}=await supabase.functions.invoke('admin-create-user',{headers:{Authorization:`Bearer ${accessToken}`},body:{full_name:fullName,username,email,password,initial_minutes:initialMinutes,max_concurrent_calls:maxCC}});
       if(error){let detail='';try{if(error.context&&typeof error.context.json==='function'){const p=await error.context.json();detail=p?.error||p?.message||''}}catch{}throw new Error(detail||error.message||'Edge Function request failed.');}
       if(!data?.success)throw new Error(data?.error||'Customer account could not be created.');
-      msg.textContent=`Customer created: ${data.user.email} · ${data.user.initial_minutes} minutes · Max CC ${data.user.max_concurrent_calls}`;msg.style.color='#067647';
-      emailInput.value='';document.getElementById('newPassword').value='';document.getElementById('newFullName').value='';
+      msg.textContent=`Customer created: User ID ${data.user.username} · ${data.user.initial_minutes} minutes · Max CC ${data.user.max_concurrent_calls}`;msg.style.color='#067647';
+      emailInput.value='';document.getElementById('newUsername').value='';document.getElementById('newPassword').value='';document.getElementById('newFullName').value='';
       if(window.nxReloadAdmin)await window.nxReloadAdmin();
     }catch(error){msg.textContent=error?.message||'Customer creation failed.';msg.style.color='#b42318';}
     finally{button.disabled=false;button.textContent='Create Account';}
