@@ -37,7 +37,7 @@ const form=document.getElementById('loginForm'),msg=document.getElementById('mes
 const show=(text,type='error')=>{msg.textContent=text;msg.className='message '+type};
 const query=new URLSearchParams(location.search);
 const hash=new URLSearchParams(location.hash.startsWith('#')?location.hash.slice(1):location.hash);
-const recoveryRequested=query.get('type')==='recovery'||hash.get('type')==='recovery'||!!query.get('token_hash');
+const recoveryRequested=query.get('type')==='recovery'||hash.get('type')==='recovery'||!!query.get('code')||!!query.get('token_hash')||!!query.get('access_token')||!!hash.get('access_token');
 
 async function startRecovery(){
   if(!isSupabaseConfigured()){show('Supabase is not configured. Please contact NX Voice admin.');return;}
@@ -45,11 +45,16 @@ async function startRecovery(){
     let sessionError=null;
     const code=query.get('code');
     const tokenHash=query.get('token_hash');
+    const queryAccessToken=query.get('access_token');
+    const queryRefreshToken=query.get('refresh_token');
     if(code){
       const result=await supabase.auth.exchangeCodeForSession(code);
       sessionError=result.error;
     }else if(tokenHash){
       const result=await supabase.auth.verifyOtp({token_hash:tokenHash,type:'recovery'});
+      sessionError=result.error;
+    }else if(queryAccessToken&&queryRefreshToken){
+      const result=await supabase.auth.setSession({access_token:queryAccessToken,refresh_token:queryRefreshToken});
       sessionError=result.error;
     }else if(hash.get('access_token')&&hash.get('refresh_token')){
       const result=await supabase.auth.setSession({access_token:hash.get('access_token'),refresh_token:hash.get('refresh_token')});
